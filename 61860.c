@@ -118,8 +118,8 @@ cout    0x5f            Control port*/
 #define WORKING_BITPOS2 (1 << ((Pipe2.b.h & 0x38) >> 3))
     
 	SWORD _pc=0;
-	BYTE _sp=0;
 	BYTE _q=0,_r=0;
+#define _sp _r
 	BYTE _d;
   union Z_REGISTERS regs1,regs2;
   union RESULT res1,res2,res3;
@@ -211,27 +211,35 @@ cout    0x5f            Control port*/
   
 		switch(GetPipe(_pc++)) {
 			case 0:   // LII n
+				_i=Pipe2.b.l;
 				break;
 
 			case 1:   // LIJ n
+				_j=Pipe2.b.l;
 				break;
 
 			case 2:   // LIA n
+				_a=Pipe2.b.l;
 				break;
 
 			case 3:   // LIB n
+				_b=Pipe2.b.l;
 				break;
 
 			case 4:	// IX
+				_x++;
 				break;
 
 			case 5:	// DX
+				_x--;
 				break;
 
 			case 6:	// IY
+				_y++;
 				break;
 
 			case 7:	// DY
+				_y--;
 				break;
 
 			case 8:   // MVW
@@ -259,21 +267,35 @@ cout    0x5f            Control port*/
 				break;
 
 			case 0x10:  // LIDP nm
+				_dx=Pipe2.x;
 				break;
 
 			case 0x11:	// LIDL n
+				_dl=Pipe2.b.l;
 				break;
 
 			case 0x12:  // LIP n
+				_p=Pipe2.b.l;
 				break;
 
 			case 0x13:	// LIQ n
+				_q=Pipe2.b.l;
 				break;
 
 			case 0x14:  // ADB
+				res1.b.l=GetByte(_p);
+				res2.b.l=_a;
+				res1.b.h=GetByte(_p+1);
+				res2.b.h=_b;
+				goto aggAdd16;
 				break;
 
 			case 0x15:	// SBB
+				res1.b.l=GetByte(_p);
+				res2.b.l=_a;
+				res1.b.h=GetByte(_p+1);
+				res2.b.h=_b;
+				goto aggSub16;
 				break;
 
 			case 0x16:	// 
@@ -305,858 +327,639 @@ cout    0x5f            Control port*/
 				break;
 
 			case 0x20:		// LDP
+				_a=_p;
 				break;
+
 			case 0x21:		// LDQ
+				_a=_q;
 				break;
+
 			case 0x22:		// LDR
+				_a=_r;
 				break;
 
 			case 0x23:		// CLRA
+				_a=0;
 				break;
 
 			case 0x24:		// IXL
+				_x++;
+				_dp=_x;
+				_a=GetByte(_dp);
 				break;
 
 			case 0x25:		// DXL
+				_x--;
+				_dp=_x;
+				_a=GetByte(_dp);
 				break;
 
-			case 0x26:		// IY s
+			case 0x26:		// IYS
+				_y++;
+				_dp=_y;
+				PutByte(_dp_a);
 				break;
 
-			case 0x27:		// DY s
+			case 0x27:		// DYS
+				_y--;
+				_dp=_y;
+				PutByte(_dp_a);
 				break;
 
-			case 0x15:
-			case 0x1d:
-			case 0x25:
-			case 0x2d:
-			case 0x3d:
-				WORKING_REG --;
-        res3.b.l=WORKING_REG;
-        
-aggDec:
-      	_f.Zero=res3.b.l ? 0 : 1;
-        _f.Sign=res3.b.l & 0x80 ? 1 : 0;
-      	_f.Parity= res3.b.l == 0x7f ? 1 : 0; //P = 1    // DEC x         P = 1 if x=80H before, else 0
-      	_f.AuxCarry= (res3.b.l & 0xf) == 0xf ? 1 : 0; // DEC x      1 if borrow from bit 4 else 0 
+			case 0x28:		// JRNZP n
 				break;
 
-			case 6:   // MVI B,n ecc
-			case 0xe:
-			case 0x16:
-			case 0x1e:
-			case 0x26:
-			case 0x2e:
-			case 0x3e:
-			  WORKING_REG=Pipe2.b.l;
-			  _pc++;
+			case 0x29:		// JRNZM n
 				break;
 
-			case 7:   // RLC
-				_f.Carry=_a & 0x80 ? 1 : 0;
-				_a <<= 1;
-				_a |= _f.Carry;
-        
-aggRotate:
-        _f.AuxCarry=0;
+			case 0x2a:		// JRNCP n
+				break;
+
+			case 0x2b:		// JRNCM n
+				break;
+
+			case 0x2c:		// JRP n
+				break;
+
+			case 0x2d:		// JRM n
+				break;
+
+			case 0x2e:	// 
+				break;
+
+			case 0x2f:	// LOOP n
+				break;
+
+			case 0x30:		// STP
+				_p=_a;
+				break;
+
+			case 0x31:		// STQ
+				_q=_a;
+				break;
+
+			case 0x32:		// STR
+				_r=_a;
+				break;
+
+			case 0x33:   // NOPT
 				break;
                                          
-			case 9:   // DAD H,B ecc
-			case 0x19:
-			case 0x29:
-        res1.x=_H;
-        res2.x=WORKING_REG16;
-			  res3.d=(DWORD)res1.x+(DWORD)res2.x;
-			  _H = res3.x;
-        _f.AuxCarry = ((res1.x & 0xfff) + (res2.x & 0xfff)) >= 0x1000 ? 1 : 0;   // 
-        goto aggFlagWC;
-        break;
-
-			case 0xa:   // LDAX B
-			  _a=GetValue(_B);
+			case 0x34:   // PUSH
+				_sp--;
+				PutByte(_sp,_a);
 				break;
 
-      case 0xb:   // DCX BC ecc
-      case 0x1b:
-      case 0x2b:
-				WORKING_REG16 --;
+			case 0x35:   // MV WP
 				break;
 
-			case 0xf:   // RRC
-				_f.Carry=_a & 1;
-				_a >>= 1;
-				if(_f.Carry)
-					_a |= 0x80;
-        goto aggRotate;
+			case 0x36:	// 
 				break;
 
-			case 0x12:    // STAX D
-			  PutValue(_D,_a);
+			case 0x37:	// RTN
 				break;
 
-      case 0x17:    // RAL
-				_f1=_f;
-				_f.Carry=_a & 0x80 ? 1 : 0;
-				_a <<= 1;
-				_a |= _f1.Carry;
-        goto aggRotate;
+			case 0x38:		// JRZP n
 				break;
 
-			case 0x1a:    // LDAX D
-			  _a=GetValue(_D);
+			case 0x39:		// JRZM n
 				break;
 
-			case 0x1f:    // RAR
-				_f1=_f;
-				_f.Carry=_a & 1;
-				_a >>= 1;
-				if(_f1.Carry)
-					_a |= 0x80;
-        goto aggRotate;
+			case 0x3a:		// JRCP n
 				break;
 
-			case 0x22:    // SHLD nn
-			  PutIntValue(Pipe2.x,_H);
-			  _pc+=2;
+			case 0x3b:		// JRCM n
 				break;
 
-			case 0x27:		// DAA
-        res3.x=res1.x=_a;
-        i=_f.Carry;
-        _f.Carry=0;
-        if((_a & 0xf) > 9 || _f.AuxCarry) {
-          res3.x+=6;
-          _a=res3.b.l;
-          _f.Carry= i || HIBYTE(res3.x);
-          _f.AuxCarry=1;
-          }
-        else
-          _f.AuxCarry=0;
-        if((res1.b.l>0x99) || i) {
-          _a+=0x60;  
-          _f.Carry=1;
-          }
-        else
-          _f.Carry=0;
-        goto calcParity;
+			case 0x3c:	// 
+			case 0x3d:	// 
+			case 0x3e:	// 
+			case 0x3f:	// 
 				break;
 
-			case 0x2a:    // LHLD (nn)
-			  _H=GetIntValue(Pipe2.x);
-			  _pc+=2;
+			case 0x40:		// INCI
+				_i++;
 				break;
 
-  		case 0x2f:    // CMA
-        _a=~_a;
-        _f.AuxCarry=1;
+			case 0x41:		// DECI
+				_i--;
 				break;
 
-			case 0x31:    // LXI SP,nn (v. anche H ecc)
-			  _sp=Pipe2.x;
-			  _pc+=2;
+			case 0x42:		// INCA
+				_a++;
 				break;
 
-			case 0x32:    // STA (nn)
-			  PutValue(Pipe2.x,_a);
-			  _pc+=2;
+			case 0x43:		// DECA
+				_a--;
 				break;
 
-			case 0x33:    // INX SP (v. anche INX B ecc)
-			  _sp++;
+			case 0x44:		// ADM
+				res1.b.l=GetByte(_p);
+				res2.b.l=_a;
+				goto aggAdd;
 				break;
 
-			case 0x34:    // INR (H)
-        res3.b.l=GetValue(_H)+1;
-			  PutValue(_H,res3.b.l);
-        goto aggInc;
+			case 0x45:		// SBM
+				res1.b.l=GetByte(_p);
+				res2.b.l=_a;
+				goto aggSub;
 				break;
 
-			case 0x35:    // DCR (H)
-        res3.b.l=GetValue(_H)-1;
-			  PutValue(_H,res3.b.l);
-        goto aggDec;
+			case 0x46:		// ANMA
+				res1.b.l=GetByte(_p);
+				res2.b.l=_a;
+				res3.b.l=res1.b.l & res.b.l;
+				PutByte(_p,res3.b.l);
+				goto aggFlagZ;
 				break;
 
-			case 0x36:    // MVI (H),n
-			  PutValue(_H,Pipe2.b.l);
-			  _pc++;
-				break;
-              
-      case 0x37:    // STC
-        _f.Carry=1;
-        _f.AuxCarry=0;
-        break;
-                                   
-			case 0x39:    // DAD SP
-        res1.x=_H;
-        res2.x=_sp;
-			  res3.d=(DWORD)res1.x+(DWORD)res2.x;
-        _H = res3.x;
-        _f.AuxCarry = ((res1.x & 0xfff) + (res2.x & 0xfff)) >= 0x1000 ? 1 : 0;   // 
-        goto aggFlagWC;
+			case 0x47:		// ORMA
+				res1.b.l=GetByte(_p);
+				res2.b.l=_a;
+				res3.b.l=res1.b.l | res.b.l;
+				PutByte(_p,res3.b.l);
+				goto aggFlagZ;
 				break;
 
-			case 0x3a:    // LDA (nn)
-			  _a=GetValue(Pipe2.x);
-			  _pc+=2;
+			case 0x48:		// INCK
+				_k++;
 				break;
 
-      case 0x3b:    // DCX SP (v. anche DEC B ecc)
-			  _sp--;
+			case 0x49:		// DECK
+				_k--;
 				break;
 
-      case 0x3f:    // CMC
-        _f.AuxCarry=_f.Carry;
-        _f.Carry=!_f.Carry;
-        break;
-                                   
-			case 0x40:    // MOV r,r
-			case 0x41:
-			case 0x42:
-			case 0x43:
-			case 0x44:
-			case 0x45:
-			case 0x47:
-			case 0x48:                             // 
-			case 0x49:
-			case 0x4a:
-			case 0x4b:
-			case 0x4c:
-			case 0x4d:
-			case 0x4f:
-			case 0x50:                             // 
-			case 0x51:
-			case 0x52:
-			case 0x53:
-			case 0x54:
-			case 0x55:
-			case 0x57:
-			case 0x58:                             // 
-			case 0x59:
-			case 0x5a:
-			case 0x5b:
-			case 0x5c:
-			case 0x5d:
-			case 0x5f:
-			case 0x60:                             // 
-			case 0x61:
-			case 0x62:
-			case 0x63:
-			case 0x64:
-			case 0x65:
-			case 0x67:
-			case 0x68:                             // 
-			case 0x69:
-			case 0x6a:
-			case 0x6b:
-			case 0x6c:
-			case 0x6d:
-			case 0x6f:
-			case 0x78:                             // 
-			case 0x79:
-			case 0x7a:
-			case 0x7b:
-			case 0x7c:
-			case 0x7d:
-			case 0x7f:
-				WORKING_REG=WORKING_REG2;
+			case 0x4a:		// INCM (unofficial)
+				_m++;
 				break;
 
-			case 0x46:    // MOV r,(HL)
-			case 0x4e:
-			case 0x56:
-			case 0x5e:
-			case 0x66:
-			case 0x6e:
-			case 0x7e:
-				WORKING_REG=GetValue(_H);
+			case 0x4b:		// DECM (unofficial)
+				_m--;
 				break;
 
-			case 0x70:                             // 
-			case 0x71:
-			case 0x72:
-			case 0x73:
-			case 0x74:
-			case 0x75:
-			case 0x77:
-				PutValue(_H,/* regs1.b[((Pipe1 & 7) +1) & 7]*/ WORKING_REG2);
-				break;
-        
-			case 0x76:    // HLT
-			  DoHalt=1;
+			case 0x4c:		// INA
 				break;
 
-			case 0x80:    // ADD r
+			case 0x4d:		// NOPW
+				break;
+
+			case 0x4e:		// WAIT n
+				break;
+
+			case 0x4f:		// IPXL
+				break;
+
+			case 0x50:		// INCP
+				_p++;
+				break;
+
+			case 0x51:		// DECP
+				_p--;
+				break;
+
+			case 0x52:		// STD
+				PutByte(_dp,_a);
+				break;
+
+			case 0x53:		// MVDM
+				PutByte(_dp,GetByte(_p));
+				break;
+
+			case 0x54:		// MVMP
+				break;
+
+			case 0x55:		// MVMD
+				PutByte(_p,GetByte(_dp));
+				break;
+
+			case 0x56:		// LDPC
+				break;
+
+			case 0x57:		// LDD
+				_a=GetByte(_dp);
+				break;
+
+			case 0x58:		// SWP
+				break;
+
+			case 0x59:		// LDM
+				_a=GetByte(_p);
+				break;
+
+			case 0x5a:		// SL
+				break;
+
+			case 0x5b:		// POP
+				_a=GetByte(_sp);
+				_sp++;
+				break;
+
+			case 0x5c:		// 
+				break;
+
+			case 0x5d:		// OUTA
+				break;
+
+			case 0x5e:		// 
+				break;
+
+			case 0x5f:		// OUTF
+				break;
+
+			case 0x60:		// ANIM n
+				res1.b.l=GetByte(_p);
+				res2.b.l=Pipe2.b.l;
+				res3.b.l=res1.b.l & res.b.l;
+				PutByte(_p,res3.b.l);
+				goto aggFlagZ;
+				break;
+
+			case 0x61:		// ORIM n
+				res1.b.l=GetByte(_p);
+				res2.b.l=Pipe2.b.l;
+				res3.b.l=res1.b.l | res.b.l;
+				PutByte(_p,res3.b.l);
+				goto aggFlagZ;
+				break;
+
+			case 0x62:		// TSIM n
+				res1.b.l=GetByte(_p);
+				res2.b.l=Pipe2.b.l;
+				res3.b.l=res1.b.l & res.b.l;
+				goto aggFlagZ;
+				break;
+
+			case 0x63:		// CPIM n
+				res1.b.l=GetByte(_p);
+				res2.b.l=Pipe2.b.l;
+				res3.b.l=res1.b.l - res.b.l;
+				goto aggFlag;
+				break;
+
+			case 0x64:		// ANIA n
+				res1.b.l=_a;
+				res2.b.l=Pipe2.b.l;
+				res3.b.l=res1.b.l & res.b.l;
+				_a=res3.b.l;
+				goto aggFlagZ;
+				break;
+
+			case 0x65:		// ORIA n
+				res1.b.l=_a;
+				res2.b.l=Pipe2.b.l;
+				res3.b.l=res1.b.l | res.b.l;
+				_a=res3.b.l;
+				goto aggFlagZ;
+				break;
+
+			case 0x66:		// TSIA n
+				res1.b.l=_a;
+				res2.b.l=Pipe2.b.l;
+				res3.b.l=res1.b.l & res.b.l;
+				goto aggFlagZ;
+				break;
+
+			case 0x67:		// CPIA n
+				res1.b.l=_a;
+				res2.b.l=Pipe2.b.l;
+				res3.b.l=res1.b.l - res.b.l;
+				goto aggFlag;
+				break;
+
+			case 0x68:		// NOPT
+				break;
+
+			case 0x69:		// CASE
+				break;
+
+			case 0x6a:		// NOPT
+				break;
+
+			case 0x6b:		// TEST n
+				break;
+
+			case 0x6c:		// 
+			case 0x6d:		// 
+			case 0x6e:		// 
+				break;
+
+			case 0x6f:		// IPXH
+				break;
+
+			case 0x70:		// ADIM n
+				res1.b.l=GetByte(_p);
+				res2.b.l=Pipe2.b.l;
+
+aggAdd:
+				res1.b.h=0;
+				res2.b.h=0;
+
+aggAdd16:
+				res3.x=res1.x+res2.x;
+				PutByte(_p,res3.b.l);
+				goto aggFlag
+				break;
+
+			case 0x71:		// SBIM n
+				res1.b.l=GetByte(_p);
+				res2.b.l=Pipe2.b.l;
+
+aggSub:
+				res1.b.h=0;
+				res2.b.h=0;
+
+aggSub16:
+				res3.x=res1.x-res2.x;
+				PutByte(_p,res3.b.l);
+
+aggFlag:
+				_f.Carry=!!res3.b.h;
+aggFlagZ:
+				_f.Zero=!res3.b.l;
+				break;
+
+			case 0x72:		// RZ n
+				break;
+
+			case 0x73:		// RZ n
+				break;
+
+			case 0x74:		// ADIA n
+				res1.b.l=_a;
+				res2.b.l=Pipe2.b.l;
+
+aggAddA:
+				res1.b.h=0;
+				res2.b.h=0;
+				res3.x=res1.x+res2.x;
+				_a=res3.b.l;
+
+				goto aggFlag;
+				break;
+
+			case 0x75:		// SBIA n
+				res1.b.l=_a;
+				res2.b.l=Pipe2.b.l;
+
+aggSubA:
+				res1.b.h=0;
+				res2.b.h=0;
+				res3.x=res1.x-res2.x;
+				_a=res3.b.l;
+				goto aggFlag;
+				break;
+
+			case 0x76:		// RZ n
+				break;
+
+			case 0x77:		// RZ n
+				break;
+
+			case 0x78:		// CALL nm
+				break;
+
+			case 0x79:		// JP nm
+				break;
+
+			case 0x7a:		// SET knm
+				break;
+
+			case 0x7b:		// 
+				break;
+
+			case 0x7c:		// JPNZ nm
+			case 0x7d:		// JPNC nm
+			case 0x7e:		// JPZ nm
+			case 0x7f:		// JPC nm
+				break;
+
+
+			case 0x80:		// LP 1
 			case 0x81:
 			case 0x82:
 			case 0x83:
 			case 0x84:
 			case 0x85:
+			case 0x86:
 			case 0x87:
-        res2.b.l=WORKING_REG2;
-        
-aggSomma:
-				res1.b.l=_a;
-        res1.b.h=res2.b.h=0;
-        res3.x=res1.x+res2.x;
-        _a=res3.b.l;
-        _f.AuxCarry = ((res1.b.l & 0xf) + (res2.b.l & 0xf)) >= 0x10 ? 1 : 0;   // 
-
-aggFlagB:
-//        _f.Parity = !!(((res1.b.l & 0x40) + (res2.b.l & 0x40)) & 0x40) != !!(((res1.b.l & 0x80) + (res2.b.l & 0x80)) & 0x80);
-//        _f.Parity = !!(((res1.b.l & 0x40) + (res2.b.l & 0x40)) & 0x80) != !!(((res1.x & 0x80) + (res2.x & 0x80)) & 0x100);
-  //(M^result)&(N^result)&0x80 is nonzero. That is, if the sign of both inputs is different from the sign of the result. (Anding with 0x80 extracts just the sign bit from the result.) 
-  //Another C++ formula is !((M^N) & 0x80) && ((M^result) & 0x80)
-//        _f.Parity = !!((res1.b.l ^ res3.b.l) & (res2.b.l ^ res3.b.l) & 0x80);
-//        _f.Parity = !!(!((res1.b.l ^ res2.b.l) & 0x80) && ((res1.b.l ^ res3.b.l) & 0x80));
-//**        _f.Parity = ((res1.b.l ^ res3.b.l) & (res2.b.l ^ res3.b.l) & 0x80) ? 1 : 0;
-  // Calculate the overflow by sign comparison.
-/*  carryIns = ((a ^ b) ^ 0x80) & 0x80;
-  if (carryIns) // if addend signs are the same
-  {
-    // overflow if the sum sign differs from the sign of either of addends
-    carryIns = ((*acc ^ a) & 0x80) != 0;
-  }*/
-	// per overflow e AuxCarry https://stackoverflow.com/questions/8034566/overflow-and-carry-flags-on-z80
-/*The overflow checks the most significant bit of the 8 bit result. This is the sign bit. If we add two negative numbers (MSBs=1) then the result should be negative (MSB=1), whereas if we add two positive numbers (MSBs=0) then the result should be positive (MSBs=0), so the MSB of the result must be consistent with the MSBs of the summands if the operation was successful, otherwise the overflow bit is set.*/        
-/*        if(!_f.Sign) {
-          _f.Parity=(res1.b.l & 0x80 || res2.b.l & 0x80) ? 1 : 0;
-          }
-        else {
-          _f.Parity=(res1.b.l & 0x80 && res2.b.l & 0x80) ? 1 : 0;
-          }*/
-/*        if(res1.b.l & 0x80 && res2.b.l & 0x80)
-          _f.Parity=res3.b.l & 0x80 ? 0 : 1;
-        else if(!(res1.b.l & 0x80) && !(res2.b.l & 0x80))
-          _f.Parity=res3.b.l & 0x80 ? 1 : 0;
-        else
-          _f.Parity=0;*/
-        _f.Parity = !!res3.b.h != !!((res3.b.l & 0x80) ^ (res1.b.l & 0x80) ^ (res2.b.l & 0x80));
-        
-aggFlagBC:    // http://www.z80.info/z80sflag.htm
-				_f.Carry=!!res3.b.h;
-        
-        _f.Zero=res3.b.l ? 0 : 1;
-        _f.Sign=res3.b.l & 0x80 ? 1 : 0;
-				break;
-
-			case 0x86:    // ADD (HL)
-        res2.b.l=GetValue(_H);
-        goto aggSomma;
-				break;
-
-			case 0x88:    // ADC r
+			case 0x88:
 			case 0x89:
 			case 0x8a:
 			case 0x8b:
 			case 0x8c:
 			case 0x8d:
+			case 0x8e:
 			case 0x8f:
-        res2.b.l=WORKING_REG2;
-        
-aggSommaC:
-				res1.b.l=_a;
-        res1.b.h=res2.b.h=0;
-        res3.x=res1.x+res2.x+_f.Carry;
-        _a=res3.b.l;
-        _f.AuxCarry = ((res1.b.l & 0xf) + (res2.b.l & 0xf)) >= 0x10 ? 1 : 0;   // 
-//#warning CONTARE IL CARRY NELL overflow?? no, pare di no (v. emulatore ma io credo di sì
-//        _f.Parity = !!(((res1.b.l & 0x40) + (res2.b.l & 0x40)) & 0x80) != !!(((res1.x & 0x80) + (res2.x & 0x80)) & 0x100);
-/*        if(res1.b.l & 0x80 && res2.b.l & 0x80)
-          _f.Parity=res3.b.l & 0x80 ? 0 : 1;
-        else if(!(res1.b.l & 0x80) && !(res2.b.l & 0x80))
-          _f.Parity=res3.b.l & 0x80 ? 1 : 0;
-        else
-          _f.Parity=0;*/
-        goto aggFlagB;
-				break;
-
-			case 0x8e:    // ADC A,(HL)
-        res2.b.l=GetValue(_H);
-        goto aggSommaC;
-				break;
-
-			case 0x90:    // SUB r
+			case 0x90:
 			case 0x91:
 			case 0x92:
 			case 0x93:
 			case 0x94:
 			case 0x95:
+			case 0x96:
 			case 0x97:
-        res2.b.l=WORKING_REG2;
-        
-aggSottr:
-				res1.b.l=_a;
-        res1.b.h=res2.b.h=0;
-        res3.x=res1.x-res2.x;
-        _a=res3.b.l;
-        _f.AuxCarry = ((res1.b.l & 0xf) - (res2.b.l & 0xf)) & 0xf0 ? 1 : 0;   // 
-//        _f.Parity = !!(((res1.b.l & 0x40) + (res2.b.l & 0x40)) & 0x80) != !!(((res1.x & 0x80) + (res2.x & 0x80)) & 0x100);
-//        _f.Parity = ((res1.b.l ^ res3.b.l) & (res2.b.l ^ res3.b.l) & 0x80) ? 1 : 0;
-/*        if((res1.b.l & 0x80) != (res2.b.l & 0x80)) {
-          if(((res1.b.l & 0x80) && !(res3.b.l & 0x80)) || (!(res1.b.l & 0x80) && (res3.b.l & 0x80)))
-            _f.Parity=1;
-          else
-            _f.Parity=0;
-          }
-        else
-          _f.Parity=0;*/
-/*        if((res1.b.l & 0x80) != (res2.b.l & 0x80)) {
-          if(((res1.b.l & 0x80) && !(res3.b.l & 0x80)) || (!(res1.b.l & 0x80) && (res3.b.l & 0x80)))
-            _f.Parity=1;
-          else
-            _f.Parity=0;
-          }
-        else
-          _f.Parity=0;*/
-        _f.Parity = !!res3.b.h != !!((res3.b.l & 0x80) ^ (res1.b.l & 0x80) ^ (res2.b.l & 0x80));
-  			goto aggFlagBC;
-				break;
-
-			case 0x96:    // SUB (HL)
-        res2.b.l=GetValue(_H);
-				goto aggSottr;
-				break;
-
-			case 0x98:    // SBB r
+			case 0x98:
 			case 0x99:
 			case 0x9a:
 			case 0x9b:
 			case 0x9c:
 			case 0x9d:
+			case 0x9e:
 			case 0x9f:
-        res2.b.l=WORKING_REG2;
-        
-aggSottrC:
-				res1.b.l=_a;
-        res1.b.h=res2.b.h=0;
-        res3.x=res1.x-res2.x-_f.Carry;
-        _a=res3.b.l;
-        _f.AuxCarry = ((res1.b.l & 0xf) - (res2.b.l & 0xf)) & 0xf0  ? 1 : 0;   // 
-//#warning CONTARE IL CARRY NELL overflow?? no, pare di no (v. emulatore ma io credo di sì..
-//        _f.Parity = !!(((res1.b.l & 0x40) + (res2.b.l & 0x40)) & 0x80) != !!(((res1.x & 0x80) + (res2.x & 0x80)) & 0x100);
-/*        if((res1.b.l & 0x80) != (res2.b.l & 0x80)) {
-          if(((res1.b.l & 0x80) && !(res3.b.l & 0x80)) || (!(res1.b.l & 0x80) && (res3.b.l & 0x80)))
-            _f.Parity=1;
-          else
-            _f.Parity=0;
-          }
-        else
-          _f.Parity=0;*/
-        goto aggFlagB;
-				break;
-
-			case 0x9e:    // SBB (HL)
-        res2.b.l=GetValue(_H);
-				goto aggSottrC;
-				break;
-
-			case 0xa0:    // ANA r
+			case 0xa0:
 			case 0xa1:
 			case 0xa2:
 			case 0xa3:
 			case 0xa4:
 			case 0xa5:
+			case 0xa6:
 			case 0xa7:
-				_a &= WORKING_REG2;
-        _f.AuxCarry=1;
-        
-aggAnd:
-        res3.b.l=_a;
-aggAnd2:
-        _f.Carry=0;
-aggAnd3:      // usato da IN 
-        _f.Zero=_a ? 0 : 1;
-        _f.Sign=_a & 0x80 ? 1 : 0;
-        // AuxCarry è 1 fisso se AND e 0 se OR/XOR
-        
-calcParity:
-          {
-          BYTE par;
-          par= res3.b.l >> 1;			// Microchip AN774
-          par ^= res3.b.l;
-          res3.b.l= par >> 2;
-          par ^= res3.b.l;
-          res3.b.l= par >> 4;
-          par ^= res3.b.l;
-          _f.Parity=par & 1 ? 1 : 0;
-          }
-				break;
-
-			case 0xa6:    // ANA (HL)
-				_a &= GetValue(_H);
-        _f.AuxCarry=1;
-        goto aggAnd;
-				break;
-
-			case 0xa8:    // XRA r
+			case 0xa8:
 			case 0xa9:
 			case 0xaa:
 			case 0xab:
 			case 0xac:
 			case 0xad:
+			case 0xae:
 			case 0xaf:
-				_a ^= WORKING_REG2;
-        _f.AuxCarry=0;
-        goto aggAnd;
-				break;
-
-			case 0xae:    // XRA (HL)
-				_a ^= GetValue(_H);
-        _f.AuxCarry=0;
-        goto aggAnd;
-				break;
-
-			case 0xb0:    // ORA r
+			case 0xb0:
 			case 0xb1:
 			case 0xb2:
 			case 0xb3:
 			case 0xb4:
 			case 0xb5:
+			case 0xb6:
 			case 0xb7:
-				_a |= WORKING_REG2;
-        _f.AuxCarry=0;
-        goto aggAnd;
-				break;
-
-			case 0xb6:    // ORA (HL)
-				_a |= GetValue(_H);
-        _f.AuxCarry=0;
-        goto aggAnd;
-				break;
-
-			case 0xb8:    // CMP r
+			case 0xb8:
 			case 0xb9:
 			case 0xba:
 			case 0xbb:
 			case 0xbc:
 			case 0xbd:
+			case 0xbe:
 			case 0xbf:
-				res2.b.l=WORKING_REG2;
-				goto compare;
+				_p=Pipe1 & 0x3f;
 				break;
 
-			case 0xbe:    // CMP (HL)
-				res2.b.l=GetValue(_H);
-  			goto compare;
+			case 0xc0:		// INCJ
+				_j++;
 				break;
 
-			case 0xc0:    // RNZ
-			  if(!_f.Zero)
-			    goto Return;
+			case 0xc1:		// DECJ
+				_j--;
 				break;
 
-			case 0xc1:    // POP B ecc
-			case 0xd1:    
-			case 0xe1:    
-#define WORKING_REG16B regs1.r[(Pipe1 & 0x30) >> 4].b
-				WORKING_REG16B.l=GetValue(_sp++);
-				WORKING_REG16B.h=GetValue(_sp++);
-				break;
-			case 0xf1:    
-				_f.b=_f_PSW=GetValue(_sp++);
-				_a=GetValue(_sp++);
+			case 0xc2:		// INCB
+				_b++;
 				break;
 
-			case 0xc2:    // JNZ
-			  if(!_f.Zero)
-			    goto Jump;
-			  else
-			    _pc+=2;
+			case 0xc3:		// DECB
+				_b--;
 				break;
 
-			case 0xc3:    // JMP
-			case 0xcb:
-Jump:
-				_pc=Pipe2.x;
+			case 0xc4:		// ADCM
+				res1.b.l=GetByte(_p);
+				res2.b.l=_a+_f.Carry;
+				goto aggAdd;
 				break;
 
-			case 0xc4:    // CNZ
-			  if(!_f.Zero)
-			    goto Call;
-			  else
-			    _pc+=2;
+			case 0xc5:		// SBCM
+				res1.b.l=GetByte(_p);
+				res2.b.l=_a     +_f.Carry;		// VERIFICARE!
+				goto aggSub;
 				break;
 
-			case 0xc5:    // PUSH B ecc
-			case 0xd5:    // 
-			case 0xe5:    // 
-				PutValue(--_sp,WORKING_REG16B.h);
-				PutValue(--_sp,WORKING_REG16B.l);
-				break;
-			case 0xf5:    // push af..
-        _f_PSW=_f.b;
-				PutValue(--_sp,_a);
-				PutValue(--_sp,_f_PSW);
+			case 0xc6:		// TSMA
 				break;
 
-			case 0xc6:    // ADI n
-			  res2.b.l=Pipe2.b.l;
-			  _pc++;
-        goto aggSomma;
+			case 0xc7:		// CPMA
 				break;
 
-			case 0xc7:    // RST
-			case 0xcf:
-			case 0xd7:
-			case 0xdf:
+			case 0xc8:		// INCL
+				_l++;
+				break;
+
+			case 0xc9:		// DECL
+				_l--;
+				break;
+
+			case 0xca:		// INCN	(unofficial)
+				_n++;
+				break;
+
+			case 0xcb:		// DECN (unofficial)
+				_n--;
+				break;
+
+			case 0xcc:		// INB
+				break;
+
+			case 0xcd:		// NOPW
+				break;
+
+			case 0xce:		// NOPT
+				break;
+
+			case 0xcf:		// 
+				break;
+
+			case 0xd0:		// SC
+				break;
+
+			case 0xd1:		// RC
+				break;
+
+			case 0xd2:		// SR
+				break;
+
+			case 0xd3:		// NOPW
+				break;
+
+			case 0xd4:		// ANID n
+				res1.b.l=GetByte(_dp);
+				res2.b.l=Pipe2.b.l;
+				res3.b.l=res1.b.l & res.b.l;
+				PutByte(_dp,res3.b.l);
+				goto aggFlagZ;
+				break;
+
+			case 0xd5:		// ORID n
+				res1.b.l=GetByte(_dp);
+				res2.b.l=Pipe2.b.l;
+				res3.b.l=res1.b.l | res.b.l;
+				PutByte(_dp,res3.b.l);
+				break;
+
+			case 0xd6:		// TSID n
+				break;
+
+			case 0xd7:		// SZ n
+				break;
+
+			case 0xd8:		// LEAVE
+				PutByte(_sp,0);
+				break;
+
+			case 0xd9:		// NOPW
+				break;
+
+			case 0xda:		// EXAB
+				i=_a;
+				_a=_b;
+				_b=i;
+				break;
+
+			case 0xdb:		// EXAM
+				i=GetByte(_p);
+				PutByte(_p,_a);
+				_a=i;
+				break;
+
+			case 0xdc:		// 
+				break;
+
+			case 0xdd:		// OUTB
+				break;
+
+			case 0xde:		// 
+				break;
+
+			case 0xdf:		// OUTC
+				break;
+
+
+			case 0xe0:		// CAL 1n
+			case 0xe1:
+			case 0xe2:
+			case 0xe3:
+			case 0xe4:
+			case 0xe5:
+			case 0xe6:
 			case 0xe7:
+			case 0xe8:
+			case 0xe9:
+			case 0xea:
+			case 0xeb:
+			case 0xec:
+			case 0xed:
+			case 0xee:
 			case 0xef:
+			case 0xf0:
+			case 0xf1:
+			case 0xf2:
+			case 0xf3:
+			case 0xf4:
+			case 0xf5:
+			case 0xf6:
 			case 0xf7:
-			case 0xff:
-			  i=Pipe1 & 0x38;
-RST:
-				PutValue(--_sp,HIBYTE(_pc));
-				PutValue(--_sp,LOBYTE(_pc));
-				_pc=i;
-				break;
-				
-			case 0xc8:    // RZ
-			  if(_f.Zero)
-			    goto Return;
-				break;
-
-			case 0xc9:    // RET
-			case 0xd9:    // 
-Return:
-        _pc=GetValue(_sp++);
-        _pc |= ((SWORD)GetValue(_sp++)) << 8;
-				break;
-
-			case 0xca:    // JZ
-			  if(_f.Zero)
-			    goto Jump;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xcc:    // CZ
-			  if(_f.Zero)
-			    goto Call;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xcd:		// CALL
-			case 0xdd:
-			case 0xed:      // 
+			case 0xf8:
+			case 0xf9:
+			case 0xfa:
+			case 0xfb:
+			case 0xfc:
 			case 0xfd:
-Call:
-				i=Pipe2.x;
-		    _pc+=2;
-				goto RST;
-				break;
-
-			case 0xce:    // ACI n
-			  res2.b.l=Pipe2.b.l;
-			  _pc++;
-        goto aggSommaC;
-				break;
-
-			case 0xd0:    // RNC
-			  if(!_f.Carry)
-			    goto Return;
-				break;
-
-			case 0xd2:    // JNC
-			  if(!_f.Carry)
-			    goto Jump;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xd3:    // OUT
-				OutValue(MAKEWORD(Pipe2.b.l,_a),_a);
-				_pc++;
-				break;
-
-			case 0xd4:    // CNC
-			  if(!_f.Carry)
-			    goto Call;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xd6:    // SUI n
-  		  res2.b.l=Pipe2.b.l;
-			  _pc++;
-        goto aggSottr;
-				break;
-
-			case 0xd8:    // RC
-			  if(_f.Carry)
-			    goto Return;
-				break;
-
-			case 0xda:    // JC
-			  if(_f.Carry)
-			    goto Jump;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xdb:    // IN a,  NON tocca flag
-				_pc++;
-				_a=InValue(MAKEWORD(Pipe2.b.l,_a));
-				break;
-
-			case 0xdc:    // CC
-			  if(_f.Carry)
-			    goto Call;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xde:    // SBI n
-				_pc++;
-				res2.b.l=Pipe2.b.l;
-        goto aggSottrC;
-				break;
-
-			case 0xe0:    // RPO
-			  if(!_f.Parity)
-			    goto Return;
-				break;
-
-			case 0xe2:    // JPO
-			  if(!_f.Parity)
-			    goto Jump;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xe3:    // XTHL
-				res3.x=GetIntValue(_sp);
-				PutIntValue(_sp,_H);
-				_H=res3.x;
-				break;
-
-			case 0xe4:    // CPO
-			  if(!_f.Parity)
-			    goto Call;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xe6:    // ANI n
-				_a &= Pipe2.b.l;
-        _f.AuxCarry=1;
-				_pc++;
-        goto aggAnd;
-				break;
-
-			case 0xe8:    // RPE
-			  if(_f.Parity)
-			    goto Return;
-				break;
-
-			case 0xe9:    // PCHL
-			  _pc=_H;
-				break;
-
-			case 0xea:    // JPE
-			  if(_f.Parity)
-			    goto Jump;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xeb:    // XCHG
-				res3.x=_D;
-				_D=_H;
-				_H=res3.x;
-				break;
-
-			case 0xec:    // CPE
-			  if(_f.Parity)
-			    goto Call;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xee:    // XRI n
-				_a ^= Pipe2.b.l;
-        _f.AuxCarry=0;
-				_pc++;
-        goto aggAnd;
-				break;
-
-			case 0xf0:    // RP
-			  if(!_f.Sign)
-			    goto Return;
-				break;
-
-			case 0xf2:    // JP
-			  if(!_f.Sign)
-			    goto Jump;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xf3:    // DI
-			  IRQ_Enable1=IRQ_Enable2=0;
-				break;
-
-			case 0xf4:    // CP
-			  if(!_f.Sign)
-			    goto Call;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xf6:    // ORI n
-				_a |= Pipe2.b.l;
-        _f.AuxCarry=0;
-				_pc++;
-        goto aggAnd;
-				break;
-
-			case 0xf8:    // RM
-			  if(_f.Sign)
-			    goto Return;
-				break;
-
-			case 0xf9:    // SPHL
-			  _sp=_H;
-				break;
-
-			case 0xfa:    // JM
-			  if(_f.Sign)
-			    goto Jump;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xfb:    // EI
-			  IRQ_Enable1=IRQ_Enable2=1;
-				break;
-
-			case 0xfc:    // CM
-			  if(_f.Sign)
-			    goto Call;
-			  else
-			    _pc+=2;
-				break;
-
-			case 0xfe:    // CPI n
-				res2.b.l=Pipe2.b.l;
-				_pc++;
-        
-compare:        
-				res1.b.l=_a;
-				res1.b.h=res2.b.h=0;
-				res3.x=res1.x-res2.x;
-        _f.AuxCarry = ((res1.b.l & 0xf) - (res2.b.l & 0xf)) & 0xf0 ? 1 : 0;   // 
-/*        if((res1.b.l & 0x80) != (res2.b.l & 0x80)) {
-          if(((res1.b.l & 0x80) && !(res3.b.l & 0x80)) || (!(res1.b.l & 0x80) && (res3.b.l & 0x80)))
-            _f.Parity=1;
-          else
-            _f.Parity=0;
-          }
-        else
-          _f.Parity=0;*/
-        _f.Parity = !!res3.b.h != !!((res3.b.l & 0x80) ^ (res1.b.l & 0x80) ^ (res2.b.l & 0x80));
-  			goto aggFlagBC;
+			case 0xfe:
+			case 0xff:
 				break;
 			
 			}
