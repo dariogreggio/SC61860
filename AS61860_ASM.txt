@@ -1,0 +1,355 @@
+
+                                AS61860 ASSEMBLER
+
+
+
+
+
+        AF.1  ACKNOWLEDGMENT 
+
+
+           Thanks  to  Edgar  Puehringer  for  his  contribution  of the
+        AS61860 cross assembler.  
+
+                Edgar Peuhringer
+                edgar_pue at yahoo dot com
+
+           
+
+           
+
+
+        AF.2  61860 REGISTER SET 
+
+
+           
+        The  SC61860  from  Sharp has 96 bytes of internal RAM which are
+        used as registers and hardware stack.  The last  four  bytes  of
+        the  internal  RAM  are  special  purpose registers (I/O, timers
+        ...).  Here is a list of the 61860 registers:  
+
+                Reg     Address         Common use
+                ---     -------         ----------
+                i, j    0, 1            Length of block operations
+                a, b    2, 3            Accumulator       
+                xl, xh  4, 5            Pointer for read operations
+                yl, yh  6, 7            Pointer for write operations
+                k - n   8 - 0x0b        General purpose (counters ...)
+                  -     0x0c - 0x5b     Stack
+                ia      0x5c            Inport A
+                ib      0x5d            Inport B
+                fo      0x5e            Outport F
+                cout    0x5f            Control port
+
+           Other  parts of the 61860 are the 16 bit program counter (pc)
+        and 16 bit data pointer (dp).  The ALU has a carry flag (c)  and
+        a zero flag (z).  There is an internal register d which can't be
+        accessed with machine instructions.  It is filled from  i  or  j
+        when executing block operations.  
+
+           In addition there are three 7 bit registers p, q, and r which
+        are used to address the internal RAM (r is the stack pointer,  p
+        and q are used for block operations).  
+
+
+        AF.3  PROCESSOR SPECIFIC DIRECTIVES 
+
+
+           The  AS61860  cross  assembler has two (2) processor specific
+        assembler directives which are used for the etc mnemonic  (which
+        is a kind of a built-in switch/case statement):  
+
+                .default        A 16 bit address (same as .dw)
+                .case           One byte followed by a 16 bit address
+        
+        Here is an example how this should be used (cut from a lst
+        file)::
+        
+           022B 7A 05 02 18         614         PTC     0x05,   CONT16
+           022F 69                  615         DTC
+           0230 4C 01 25            616         .CASE   0x4C,   SLOADI
+           0233 4D 01 2F            617         .CASE   0x4D,   SMERGI
+           0236 51 01 D2            618         .CASE   0x51,   QUITI   
+           0239 53 00 CD            619         .CASE   0x53,   LLISTI
+           023C 56 01 D5            620         .CASE   0x56,   VERI
+           023F 01 D1               621         .DEFAULT        CONT9
+
+
+        AF.4  61860 INSTRUCTION SET 
+
+
+           The  following  tables list all 61860 family mnemonics recog-
+        nized by the AS61860 assembler.  Most of the mnemonics are  con-
+        verted  into  8  bit  machine instructions with no argument or a
+        one- or two-byte argument.  There are some exceptions for this: 
+
+                Mnemonic        Description
+                --------        -----------
+                jp              2 bit instruction, 6 bit argument
+                cal             3 bit instruction, 13 bit argument
+                ptc *)          1 byte instruction, 3 byte argument
+                dtc *)          1 byte instruction, n bytes argument
+        
+                *) Not mentioned in the CPU specification from Sharp
+
+
+        AF.4.1  Load Immediate Register 
+
+
+                LII n           (n --> I)
+                LIJ n           (n --> J)
+                LIA n           (n --> A)
+                LIB n           (n --> B)
+                LIP n           (n --> P)
+                LIQ n           (n --> Q)
+                LIDP nm         (nm --> DP)
+                LIDL n          (DL is the low byte of DP)
+                LP              (One byte version of LIP (0-0x3f))
+                RA              (Same as LIA 0, but only one byte)
+                CLRA            (synonym for RA)
+
+
+        AF.4.2  Load Accumulator 
+
+
+                LDP             (P --> A)
+                LDQ             (Q --> A)
+                LDR             (R --> A)
+                LDM             ((P) --> A)
+                LDD             ((DP) --> A)
+
+
+        AF.4.3  Store Accumulator 
+
+
+                STP             (A --> P)
+                STQ             (A --> Q)
+                STR             (A --> R)
+                STD             (A --> (DP))
+
+
+        AF.4.4  Move Data 
+
+
+                MVDM            ((P) --> (DP))
+                MVMD            ((DP) --> (P))
+
+
+        AF.4.5  Exchange Data 
+
+
+                EXAB            (A <--> B)
+                EXAM            (A <--> (P))
+
+
+        AF.4.6  Stack Operations 
+
+
+                PUSH            (R - 1 --> R, A --> (R))
+                POP             ((R) --> A, R + 1 --> R)
+                LEAVE           (0 --> (R))
+
+
+        AF.4.7  Block Move Data 
+
+
+                MVW             ((Q) --> (P), I+1 bytes)
+                MVB             ((Q) --> (P), J+1 bytes)
+                MVWD            ((DP) --> (P), I+1 bytes)
+                MVBD            ((DP) --> (P), J+1 bytes)
+                DATA            ((B,A) --> (P), I+1 bytes,
+                                reads CPU ROM also)
+
+
+        AF.4.8  Block Exchange Data 
+
+
+                EXW             ((Q) <--> (P), I+1 bytes)
+                EXB             ((Q) <--> (P), J+1 bytes)
+                EXWD            ((DP) <--> (P), I+1 bytes)
+                EXBD            ((DP) <--> (P), J+1 bytes)
+
+
+        AF.4.9  Increment and Decrement 
+
+
+                INCP            (P + 1 --> P)
+                DECP            (P - 1 --> P)
+                INCI            (I + 1 --> I)
+                DECI            (I - 1 --> I)
+                INCJ            (J + 1 --> J)
+                DECJ            (J - 1 --> J)
+                INCA            (A + 1 --> A)
+                DECA            (A - 1 --> A)
+                INCB            (B + 1 --> B)
+                DECB            (B - 1 --> B)
+                INCK            (K + 1 --> K)
+                DECK            (K - 1 --> K)
+                INCL            (L + 1 --> L)
+                DECL            (L - 1 --> L)
+                IX              (X + 1 --> X, X --> DP)
+                DX              (X - 1 --> X, X --> DP)
+                IY              (Y + 1 --> Y, Y --> DP)
+                DY              (Y - 1 --> Y, Y --> DP)
+                INCM *)         (M + 1 --> M)
+                DECM *)         (M - 1 --> M)
+                INCN *)         (N + 1 --> N)
+                DECN *)         (N - 1 --> N)
+        
+                *) Not mentioned in the CPU specification from Sharp
+
+
+        AF.4.10  Increment/Decrement with Load/Store 
+
+
+                IXL             (X + 1 --> X, X --> DP, (DP) --> A)
+                DXL             (X - 1 --> X, X --> DP, (DP) --> A)
+                IYS             (Y + 1 --> Y, Y --> DP, A --> (DP))
+                DYS             (Y - 1 --> Y, Y --> DP, A --> (DP))
+
+
+        AF.4.11  Fill 
+
+
+                FILM            (A --> (P), I+1 bytes)
+                FILD            (A --> (DP), I+1 bytes)
+
+
+        AF.4.12  Addition and Subtraction 
+
+
+                ADIA n          (A + n --> A)
+                SBIA n          (A - n --> A)
+                ADIM n          ((P) + n --> (P))
+                SBIM n          ((P) - n --> (P))
+                ADM             ((P) + A --> (P))
+                SBM             ((P) - A --> (P))
+                ADCM            ((P) + A + c --> (P), with carry)
+                SBCM            ((P) - A - c --> (P), with carry)
+                ADB             ((P+1,P) + B,A --> (P+1,P))
+                SBB             ((P+1,P) - B,A --> (P+1,P))
+                ADN             ((P) + A --> (P), BCD addition, I+1 bytes)
+                SBN             ((P) - A --> (P), BCD subtracton, I+1 bytes)
+                ADW             ((P) + (Q) --> (P), BCD addition, I+1 bytes)
+                SBW             ((P) - (Q) --> (P), BCD subtracton, I+1 bytes)
+
+
+        AF.4.13  Shift Operations 
+
+
+                SRW             (shift I+1 bytes in (P) 4 bits right)
+                SLW             (shift I+1 bytes in (P) 4 bits left)
+                SR              (shift right A 1 bit, with carry)
+                SL              (shift left  A 1 bit, with carry)
+                SWP             (exchange low and high nibble of A)
+
+
+        AF.4.14  Boolean Operations 
+
+
+                ANIA n          (A & n --> A)
+                ORIA n          (A | n --> A)
+                ANIM n          ((P) & n --> (P))
+                ORIM n          ((P) | n --> (P))
+                ANID n          ((DP) & n --> (DP))
+                ORID n          ((DP) | n --> (DP))
+                ANMA            ((P) & A --> (P))
+                ORMA            ((P) | A --> (P))
+
+
+        AF.4.15  Compare 
+
+
+                CPIA n          (A - n --> c,z)
+                CPIM n          ((P) - n --> c,z)
+                CPMA            ((P) - A --> c,z)
+                TSIA n          (A & n --> z)
+                TSIM n          ((P) & n --> z)
+                TSID n          ((DP) & n --> z)
+                TSIP            ((P) & A --> z)
+
+
+        AF.4.16  CPU Control 
+
+
+                SC              (Set carry, c=1, z=1)
+                RC              (Reset carry, c=0, z=1)
+                NOPW            (no op, wait 2 cycles)
+                NOPT            (no op, wait 3 cycles)
+                WAIT n          (wait 6+n cycles)
+                WAITJ           (wait 5+4*I cycles)
+                CUP             (synonym for WAITJ)
+
+
+        AF.4.17  Absolute Jumps 
+
+
+                JP nm
+                JPZ nm          (on zero)
+                JPNZ nm         (on not zero)
+                JPC nm	        (on carry)
+                JPNC nm	        (on not carry)
+                PTC/DTC         (see 'Processor Specific Directives')
+                PTJ/DTJ         (synonym for PTC/DTC)
+                CPCAL/DTLRA     (synonym for PTC/DTC)
+                CASE1/CASE2     (synonym for PTC/DTC)
+                SETT/JST        (synonym for PTC/DTC)
+
+
+        AF.4.18  Relative Jumps 
+
+
+           These  operations  handle  a  jump relative to PC forward and
+        back with  a  maximum  distance  of  255  byte.   The  assembler
+        resolves 16 bit addresses to to 8 bit relative adresses.  If the
+        target address is to far away, an error will be generated.  Note
+        that relative jumps need 1 byte less than absolute jumps.  
+
+                JRP nm          (jump relative plus direction)
+                JRZP nm         (jump relative on zero plus direction)
+                JRNZP nm        (jump relative on not zero plus direction)
+                JRCP nm         (jump relative on carry plus direction)
+                JRNCP nm        (jump relative on not carry plus direction)
+                JRM nm          (jump relative minus direction)
+                JRZM nm         (jump relative on zero minus direction)
+                JRNZM nm        (jump relative on not zero minus direction)
+                JRCM nm         (jump relative on carry minus direction)
+                JRNCM nm        (jump relative on not carry minus direction)
+                LOOP nm         (decrements (R) and makes a JRNCM)
+
+
+        AF.4.19  Calls 
+
+
+                CALL nm
+                CAL nm          (nm must be <= 0x1fff,
+                                1 byte less code than CALL)
+                RTN
+
+
+        AF.4.20  Input and output 
+
+
+                INA             (Port A --> A)
+                INB		(Port B --> A)
+                OUTA		((0x5c) --> Port A)
+                OUTB		((0x5d) --> Port B)
+                OUTF		((0x5e) --> Port F)
+                OUTC 		((0x5f) --> Port C)
+                TEST n          (timers, pins & n --> z)
+
+
+        AF.4.21  Unknown Commands 
+
+
+                READ            ((PC+1) -> A)
+                READM           ((PC+1) -> (P))
+                WRIT            (???)
+
+
+
+
+
+
+
+  
