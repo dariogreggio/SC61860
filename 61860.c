@@ -32,6 +32,8 @@ extern volatile BYTE keysFeedPtr;
 extern volatile BYTE TIMIRQ;
 
 extern BYTE ram_seg[MAX_RAM],*stack_seg;
+// credo che i 96 byte di cpu, registri stack ecc, siano SEPARATI da RAM vera...
+extern BYTE rom_seg[MAX_ROM],*stack_seg;
 BYTE DoReset=0,DoWait=0;
 #define MAX_WATCHDOG 100      // x30mS v. sotto
 WORD WDCnt=MAX_WATCHDOG;
@@ -112,15 +114,16 @@ cout    0x5f            Control port*/
 #define _l regs1.r[9].b.l
 #define _m regs1.r[10].b.l
 #define _n regs1.r[11].b.l
-#define WORKING_REG regs1.b[((Pipe1 & 0x38) ^ 8) >> 3]      // la parte bassa/alta è invertita...
-#define WORKING_REG2 regs1.b[(Pipe1 ^ 1) & 7]
-#define WORKING_BITPOS (1 << ((Pipe2.b.l & 0x38) >> 3))
-#define WORKING_BITPOS2 (1 << ((Pipe2.b.h & 0x38) >> 3))
+#define WORKING_REG regs1.b[Pipe1 & 3]      // I,J,A,B
+#define WORKING_REG2 regs1.b[Pipe1 & 3]      // P,Q,R
+#define WORKING_REG3 regs1.b[(Pipe1 & 2) >> 1]				// P in alcuni casi
+#define WORKING_REG4 regs1.b[Pipe1 & 8 ? (((Pipe1 & 0xb) >> 3) +2) : ((Pipe1 & 0x3) >> 1)]      // I,A,K,M in alcuni casi
+#define WORKING_REG5 regs1.b[Pipe1 & 8 ? (((Pipe1 & 0xb) >> 3) +2) : ((Pipe1 & 0x3) >> 1)]      // J,B,L,N in alcuni casi
     
 	SWORD _pc=0;
 	BYTE _q=0,_r=0;
 #define _sp _r
-	BYTE _d;
+	SWORD _dp;
   union Z_REGISTERS regs1,regs2;
   union RESULT res1,res2,res3;
 //  union OPERAND op1,op2;
@@ -212,18 +215,23 @@ cout    0x5f            Control port*/
 		switch(GetPipe(_pc++)) {
 			case 0:   // LII n
 				_i=Pipe2.b.l;
+				//WORKING_REG ... usare
+				_pc++;
 				break;
 
 			case 1:   // LIJ n
 				_j=Pipe2.b.l;
+				_pc++;
 				break;
 
 			case 2:   // LIA n
 				_a=Pipe2.b.l;
+				_pc++;
 				break;
 
 			case 3:   // LIB n
 				_b=Pipe2.b.l;
+				_pc++;
 				break;
 
 			case 4:	// IX
@@ -243,57 +251,115 @@ cout    0x5f            Control port*/
 				break;
 
 			case 8:   // MVW
+				for(i=0; i<=_i; i++)
+					PutByte(_p++ +i,GetByte(_q++ +i));
+				// deve incrementare o no?? e _i???
 				break;
 
 			case 9:   // EXW
+				for(i=0; i<=_i; i++) {
+					BYTE i2;
+					i2=GetByte(_p+i);
+					PutByte(_p++ +i,GetByte(_q+i));
+					PutByte(_q++ +i,i2);
+					}
+				// deve incrementare o no?? e _i???
 				break;
 
 			case 0xa:   // MVB
+				for(i=0; i<=_j; i++)
+					PutByte(_p++ +i,GetByte(_q++ +i));
+				// deve incrementare o no?? e _j???
 				break;
 
 			case 0xb:   // EXB
+				for(i=0; i<=_j; i++) {
+					BYTE i2;
+					i2=GetByte(_p+i);
+					PutByte(_p++ +i,GetByte(_q +i));
+					PutByte(_q++ +i,i2);
+					}
+				// deve incrementare o no?? e _j???
 				break;
 
 			case 0xc:   // ADN
+				for(i=_i; i>=0; i--) {
+          res1.b.l = GetValue(_p+i);
+          res2.b.l = _a;
+          res3.w = (WORD)(res1.b.l & 0xf) + (WORD)(res2.b.l & 0xf);
+          res3.w = (((res1.b.l & 0xf0) >> 4) + ((res2.b.l & 0xf0) >> 4) + (res3.b.h ? 1 : 0)) | 
+                    res3.b.l;
+					PutByte(_p-- +i,res3.b.l);		// flag??
+					}
+				// deve incrementare o no?? e _i???
 				break;
 
 			case 0xd:   // SBN
+				for(i=0; i<=_i; i++) {
+          res1.b.l = GetValue(_p+i);
+          res2.b.l = _a;
+          res3.w = (WORD)(res1.b.l & 0xf) - (WORD)(res2.b.l & 0xf);
+          res3.w = (((res1.b.l & 0xf0) >> 4) - ((res2.b.l & 0xf0) >> 4) - (res3.b.h ? 1 : 0)) | 
+                    res3.b.l;
+					PutByte(_p++ +i,res3.b.l);		// flag??
+					}
 				break;
 
 			case 0xe:   // ADW
+				for(i=_i; i>=0; i--) {
+          res1.b.l = GetValue(_p+i);
+          res2.b.l = GetValue(_q+i);
+          res3.w = (WORD)(res1.b.l & 0xf) + (WORD)(res2.b.l & 0xf);
+          res3.w = (((res1.b.l & 0xf0) >> 4) + ((res2.b.l & 0xf0) >> 4) + (res3.b.h ? 1 : 0)) | 
+                    res3.b.l;
+					PutByte(_p-- +i,res3.b.l);		// flag??
+					}
+				// deve incrementare o no?? e _i???
 				break;
 
 			case 0xf:   // SBW
+				for(i=_i; i>=0; i--) {
+          res1.b.l = GetValue(_p+i);
+          res2.b.l = GetValue(_q+i);
+          res3.w = (WORD)(res1.b.l & 0xf) - (WORD)(res2.b.l & 0xf);
+          res3.w = (((res1.b.l & 0xf0) >> 4) - ((res2.b.l & 0xf0) >> 4) - (res3.b.h ? 1 : 0)) | 
+                    res3.b.l;
+					PutByte(_p-- +i,res3.b.l);		// flag??
+					}
 				break;
 
 			case 0x10:  // LIDP nm
 				_dx=Pipe2.x;
+				_pc+=2;
 				break;
 
 			case 0x11:	// LIDL n
 				_dl=Pipe2.b.l;
+				_pc++;
 				break;
 
 			case 0x12:  // LIP n
 				_p=Pipe2.b.l;
+				_pc++;
 				break;
 
 			case 0x13:	// LIQ n
 				_q=Pipe2.b.l;
+				_pc++;
 				break;
 
 			case 0x14:  // ADB
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=_a;
-				res1.b.h=GetByte(_p+1);
+				res1.b.h=GetValue(_p+1);
 				res2.b.h=_b;
 				goto aggAdd16;
 				break;
 
 			case 0x15:	// SBB
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=_a;
-				res1.b.h=GetByte(_p+1);
+				res1.b.h=GetValue(_p+1);
 				res2.b.h=_b;
 				goto aggSub16;
 				break;
@@ -303,31 +369,74 @@ cout    0x5f            Control port*/
 				break;
 
 			case 0x18:   // MVWD
+				for(i=0; i<=_i; i++)
+					PutByte(_p++ +i,GetByte(_dp++ +i));
+				// deve incrementare o no?? e _i???
 				break;
 
+				// DOV'è DATA ???
+//				for(i=0; i<=_i; i++)
+//					PutByte(_p+i,GetByte(MAKEWORD(_b,_a)+i /* anche ROM*/));
+				// deve incrementare o no?? e _i???
+
+
 			case 0x19:   // EXWD
+				for(i=0; i<=_i; i++) {
+					BYTE i2;
+					i2=GetByte(_p+i);
+					PutByte(_p++ +i,GetByte(_dp+i));
+					PutByte(_dp++ +i,i2);
+					}
+				// deve incrementare o no?? e _i???
 				break;
 
 			case 0x1a:   // MVBD
+				for(i=0; i<=_j; i++)
+					PutByte(_p++ +i,GetByte(_dp+i));
+				// deve incrementare o no?? e _j???
 				break;
 
 			case 0x1b:   // EXBD
+				for(i=0; i<=_j; i++) {
+					BYTE i2;
+					i2=GetByte(_p+i);
+					PutByte(_p++ +i,GetByte(_dp+i));
+					PutByte(_dp++ +i,i2);
+					}
+				// deve incrementare o no?? e _j???
 				break;
 
 			case 0x1c:   // SRW
+				for(i=0; i<=_i; i++) {
+					PutByte(_p+i,GetByte(_p+i) >> 4);
+					_p++;
+					}
+				// deve incrementare o no?? e _i???
 				break;
 
 			case 0x1d:   // SLW
+				for(i=0; i<=_i; i++) {
+					PutByte(_p+i,GetByte(_p+i) << 4);
+					_p++;
+					}
+				// deve incrementare o no?? e _i???
 				break;
 
 			case 0x1e:   // FILM
+				for(i=0; i<=_i; i++)
+					PutByte(_p++ +i,_a);
+				// deve incrementare o no?? e _i???
 				break;
 
 			case 0x1f:   // FILD
+				for(i=0; i<=_i; i++)
+					PutByte(_dp++ +i,_a);
+				// deve incrementare o no?? e _i???
 				break;
 
 			case 0x20:		// LDP
 				_a=_p;
+				//WORKING_REG2 usare...
 				break;
 
 			case 0x21:		// LDQ
@@ -345,50 +454,71 @@ cout    0x5f            Control port*/
 			case 0x24:		// IXL
 				_x++;
 				_dp=_x;
-				_a=GetByte(_dp);
+				_a=GetValue(_dp);
 				break;
 
 			case 0x25:		// DXL
 				_x--;
 				_dp=_x;
-				_a=GetByte(_dp);
+				_a=GetValue(_dp);
 				break;
 
 			case 0x26:		// IYS
 				_y++;
 				_dp=_y;
-				PutByte(_dp_a);
+				PutValue(_dp_a);
 				break;
 
 			case 0x27:		// DYS
 				_y--;
 				_dp=_y;
-				PutByte(_dp_a);
+				PutValue(_dp_a);
 				break;
 
 			case 0x28:		// JRNZP n
+				_pc++;
+				if(!_f.Zero)
+					_pc+=Pipe2.b.l;
 				break;
 
 			case 0x29:		// JRNZM n
+				_pc++;
+				if(!_f.Zero)
+					_pc-=Pipe2.b.l;
 				break;
 
 			case 0x2a:		// JRNCP n
-				break;
-
-			case 0x2b:		// JRNCM n
+				_pc++;
+				if(!_f.Carry)
+					_pc+=Pipe2.b.l;
 				break;
 
 			case 0x2c:		// JRP n
+				_pc++;
+				_pc+=Pipe2.b.l;
 				break;
 
 			case 0x2d:		// JRM n
+				_pc++;
+				_pc-=Pipe2.b.l;
 				break;
 
 			case 0x2e:	// 
 				break;
 
 			case 0x2f:	// LOOP n
+				res3.b.l=GetValue(_r);
+				res3.b.h=0;
+				res3.x--;
+				PutValue(_r,res3.b.l);
+				_f.Carry=!!res3.b.h;
+				// prosegue :)
+			case 0x2b:		// JRNCM n
+				_pc++;
+				if(!_f.Carry)
+					_pc-=Pipe2.b.l;
 				break;
+
 
 			case 0x30:		// STP
 				_p=_a;
@@ -403,32 +533,53 @@ cout    0x5f            Control port*/
 				break;
 
 			case 0x33:   // NOPT
+			case 0x68:		// NOPT
+			case 0x6a:		// NOPT
+			case 0xce:		// NOPT
+				// 3 cicli
 				break;
                                          
 			case 0x34:   // PUSH
 				_sp--;
-				PutByte(_sp,_a);
+				PutValue(_sp,_a);
 				break;
 
-			case 0x35:   // MV WP
+			case 0x35:   // MV WP (DATA)
+				for(i=0; i<=_i; i++)
+					PutByte(_p++ +i,GetByte(MAKEWORD(_b,_a));			// da ROM!!!
+				// deve incrementare o no?? e _i???
 				break;
 
 			case 0x36:	// 
 				break;
 
 			case 0x37:	// RTN
+        _pc=GetValue(_sp++);
+        _pc |= ((SWORD)GetValue(_sp++)) << 8;
 				break;
 
 			case 0x38:		// JRZP n
+				_pc++;
+				if(_f.Zero)
+					_pc+=Pipe2.b.l;
 				break;
 
 			case 0x39:		// JRZM n
+				_pc++;
+				if(_f.Zero)
+					_pc-=Pipe2.b.l;
 				break;
 
 			case 0x3a:		// JRCP n
+				_pc++;
+				if(_f.Carry)
+					_pc+=Pipe2.b.l;
 				break;
 
 			case 0x3b:		// JRCM n
+				_pc++;
+				if(_f.Carry)
+					_pc-=Pipe2.b.l;
 				break;
 
 			case 0x3c:	// 
@@ -439,6 +590,7 @@ cout    0x5f            Control port*/
 
 			case 0x40:		// INCI
 				_i++;
+				// WORKING_REG4 usare...
 				break;
 
 			case 0x41:		// DECI
@@ -454,30 +606,30 @@ cout    0x5f            Control port*/
 				break;
 
 			case 0x44:		// ADM
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=_a;
 				goto aggAdd;
 				break;
 
 			case 0x45:		// SBM
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=_a;
 				goto aggSub;
 				break;
 
 			case 0x46:		// ANMA
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=_a;
-				res3.b.l=res1.b.l & res.b.l;
-				PutByte(_p,res3.b.l);
+				res3.b.l=res1.b.l & res2.b.l;
+				PutValue(_p,res3.b.l);
 				goto aggFlagZ;
 				break;
 
 			case 0x47:		// ORMA
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=_a;
-				res3.b.l=res1.b.l | res.b.l;
-				PutByte(_p,res3.b.l);
+				res3.b.l=res1.b.l | res2.b.l;
+				PutValue(_p,res3.b.l);
 				goto aggFlagZ;
 				break;
 
@@ -498,19 +650,28 @@ cout    0x5f            Control port*/
 				break;
 
 			case 0x4c:		// INA
-				break;
-
-			case 0x4d:		// NOPW
+				_a=InValue(0);
 				break;
 
 			case 0x4e:		// WAIT n
+				Pipe2.b.l+6;
+				_pc++;
+				// aspetta n+6 cicli
+
+				// c'è anche WAITJ... ma non si trova:
+				_i*4+5;
+				goto wait;
+
+
+wait:
 				break;
 
-			case 0x4f:		// IPXL
+			case 0x4f:		// IPXL (CUP)
 				break;
 
 			case 0x50:		// INCP
 				_p++;
+				// WORKING_REG3 usare...
 				break;
 
 			case 0x51:		// DECP
@@ -518,39 +679,46 @@ cout    0x5f            Control port*/
 				break;
 
 			case 0x52:		// STD
-				PutByte(_dp,_a);
+				PutValue(_dp,_a);
 				break;
 
 			case 0x53:		// MVDM
-				PutByte(_dp,GetByte(_p));
+				PutValue(_dp,GetValue(_p));
 				break;
 
 			case 0x54:		// MVMP
 				break;
 
 			case 0x55:		// MVMD
-				PutByte(_p,GetByte(_dp));
+				PutValue(_p,GetValue(_dp));
 				break;
 
 			case 0x56:		// LDPC
 				break;
 
 			case 0x57:		// LDD
-				_a=GetByte(_dp);
+				_a=GetValue(_dp);
 				break;
 
 			case 0x58:		// SWP
+				_a=((_a & 0xf) << 4) | ((_a >> 4) & 0xf);
 				break;
 
 			case 0x59:		// LDM
-				_a=GetByte(_p);
+				_a=GetValue(_p);
 				break;
 
 			case 0x5a:		// SL
+				_f1=_f;
+				_f.Carry=_a & 0x80 ? 1 : 0;
+				_a <<= 1;
+				_a |= _f1.Carry;
+
+aggRotate:
 				break;
 
 			case 0x5b:		// POP
-				_a=GetByte(_sp);
+				_a=GetValue(_sp);
 				_sp++;
 				break;
 
@@ -558,84 +726,93 @@ cout    0x5f            Control port*/
 				break;
 
 			case 0x5d:		// OUTA
+				OutValue(0,_a);		// loc. 0x5c
 				break;
 
 			case 0x5e:		// 
 				break;
 
 			case 0x5f:		// OUTF
+				OutValue(5,_f);		// loc. 0x5e
 				break;
 
 			case 0x60:		// ANIM n
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=Pipe2.b.l;
-				res3.b.l=res1.b.l & res.b.l;
-				PutByte(_p,res3.b.l);
+				res3.b.l=res1.b.l & res2.b.l;
+				PutValue(_p,res3.b.l);
+				_pc++;
 				goto aggFlagZ;
 				break;
 
 			case 0x61:		// ORIM n
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=Pipe2.b.l;
-				res3.b.l=res1.b.l | res.b.l;
-				PutByte(_p,res3.b.l);
+				res3.b.l=res1.b.l | res2.b.l;
+				PutValue(_p,res3.b.l);
+				_pc++;
 				goto aggFlagZ;
 				break;
 
 			case 0x62:		// TSIM n
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=Pipe2.b.l;
-				res3.b.l=res1.b.l & res.b.l;
+				res3.b.l=res1.b.l & res2.b.l;
+				_pc++;
 				goto aggFlagZ;
 				break;
 
 			case 0x63:		// CPIM n
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=Pipe2.b.l;
-				res3.b.l=res1.b.l - res.b.l;
+				res3.b.l=res1.b.l - res2.b.l;
+				_pc++;
 				goto aggFlag;
 				break;
 
 			case 0x64:		// ANIA n
 				res1.b.l=_a;
 				res2.b.l=Pipe2.b.l;
-				res3.b.l=res1.b.l & res.b.l;
+				res3.b.l=res1.b.l & res2.b.l;
 				_a=res3.b.l;
+				_pc++;
 				goto aggFlagZ;
 				break;
 
 			case 0x65:		// ORIA n
 				res1.b.l=_a;
 				res2.b.l=Pipe2.b.l;
-				res3.b.l=res1.b.l | res.b.l;
+				res3.b.l=res1.b.l | res2.b.l;
 				_a=res3.b.l;
+				_pc++;
 				goto aggFlagZ;
 				break;
 
 			case 0x66:		// TSIA n
 				res1.b.l=_a;
 				res2.b.l=Pipe2.b.l;
-				res3.b.l=res1.b.l & res.b.l;
+				res3.b.l=res1.b.l & res2.b.l;
+				_pc++;
 				goto aggFlagZ;
 				break;
 
 			case 0x67:		// CPIA n
 				res1.b.l=_a;
 				res2.b.l=Pipe2.b.l;
-				res3.b.l=res1.b.l - res.b.l;
+				res3.b.l=res1.b.l - res2.b.l;
+				_pc++;
 				goto aggFlag;
 				break;
 
-			case 0x68:		// NOPT
-				break;
-
-			case 0x69:		// CASE
-				break;
-
-			case 0x6a:		// NOPT
+			case 0x69:		// CASE (DTC)
 				break;
 
 			case 0x6b:		// TEST n
+				res1.b.l= InValue(255);			// ??? port pins e timer?
+				res2.b.l= Pipe2.b.l;
+				res3.b.l= res1.b.l & res2.b.l;
+				_pc++;
+				goto aggFlagZ;
 				break;
 
 			case 0x6c:		// 
@@ -643,12 +820,13 @@ cout    0x5f            Control port*/
 			case 0x6e:		// 
 				break;
 
-			case 0x6f:		// IPXH
+			case 0x6f:		// IPXH (CDN)
 				break;
 
 			case 0x70:		// ADIM n
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=Pipe2.b.l;
+				_pc++;
 
 aggAdd:
 				res1.b.h=0;
@@ -656,13 +834,14 @@ aggAdd:
 
 aggAdd16:
 				res3.x=res1.x+res2.x;
-				PutByte(_p,res3.b.l);
+				PutValue(_p,res3.b.l);
 				goto aggFlag
 				break;
 
 			case 0x71:		// SBIM n
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=Pipe2.b.l;
+				_pc++;
 
 aggSub:
 				res1.b.h=0;
@@ -670,7 +849,7 @@ aggSub:
 
 aggSub16:
 				res3.x=res1.x-res2.x;
-				PutByte(_p,res3.b.l);
+				PutValue(_p,res3.b.l);
 
 aggFlag:
 				_f.Carry=!!res3.b.h;
@@ -687,6 +866,7 @@ aggFlagZ:
 			case 0x74:		// ADIA n
 				res1.b.l=_a;
 				res2.b.l=Pipe2.b.l;
+				_pc++;
 
 aggAddA:
 				res1.b.h=0;
@@ -700,6 +880,7 @@ aggAddA:
 			case 0x75:		// SBIA n
 				res1.b.l=_a;
 				res2.b.l=Pipe2.b.l;
+				_pc++;
 
 aggSubA:
 				res1.b.h=0;
@@ -716,21 +897,53 @@ aggSubA:
 				break;
 
 			case 0x78:		// CALL nm
+				i=Pipe2.x;
+		    _pc+=2;
+
+call:
+				PutValue(--_sp,HIBYTE(_pc));
+				PutValue(--_sp,LOBYTE(_pc));
+				_pc=i;
 				break;
 
 			case 0x79:		// JP nm
+
+jump:
+				_pc=Pipe2.x;
 				break;
 
-			case 0x7a:		// SET knm
+			case 0x7a:		// SET knm (PTC)
 				break;
 
 			case 0x7b:		// 
 				break;
 
 			case 0x7c:		// JPNZ nm
+			  if(!_f.Zero)
+			    goto Jump;
+			  else
+			    _pc+=2;
+				break;
+
 			case 0x7d:		// JPNC nm
+			  if(!_f.Carry)
+			    goto Jump;
+			  else
+			    _pc+=2;
+				break;
+
 			case 0x7e:		// JPZ nm
+			  if(_f.Zero)
+			    goto Jump;
+			  else
+			    _pc+=2;
+				break;
+
 			case 0x7f:		// JPC nm
+			  if(_f.Carry)
+			    goto Jump;
+			  else
+			    _pc+=2;
 				break;
 
 
@@ -802,6 +1015,7 @@ aggSubA:
 				break;
 
 			case 0xc0:		// INCJ
+				// WORKING_REG5 usare...
 				_j++;
 				break;
 
@@ -818,21 +1032,29 @@ aggSubA:
 				break;
 
 			case 0xc4:		// ADCM
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=_a+_f.Carry;
 				goto aggAdd;
 				break;
 
 			case 0xc5:		// SBCM
-				res1.b.l=GetByte(_p);
+				res1.b.l=GetValue(_p);
 				res2.b.l=_a     +_f.Carry;		// VERIFICARE!
 				goto aggSub;
 				break;
 
-			case 0xc6:		// TSMA
+			case 0xc6:		// TSMA (TSIP)
+				res1.b.l=GetValue(_p);
+				res2.b.l=_a;
+				res3.b.l=res1.b.l & res2.b.l;
+				goto aggFlagZ;
 				break;
 
 			case 0xc7:		// CPMA
+				res1.b.l=GetValue(_p);
+				res2.b.l=_a;
+				res3.b.l=res1.b.l - res2.b.l;
+				goto aggFlag;
 				break;
 
 			case 0xc8:		// INCL
@@ -852,55 +1074,69 @@ aggSubA:
 				break;
 
 			case 0xcc:		// INB
-				break;
-
-			case 0xcd:		// NOPW
-				break;
-
-			case 0xce:		// NOPT
+				_a=InValue(1);
 				break;
 
 			case 0xcf:		// 
 				break;
 
 			case 0xd0:		// SC
+				_f.Carry=1;
+				_f.Zero=1;
 				break;
 
 			case 0xd1:		// RC
+				_f.Carry=0;
+				_f.Zero=1;
 				break;
 
 			case 0xd2:		// SR
+				_f1=_f;
+				_f.Carry=_a & 1;
+				_a >>= 1;
+				if(_f1.Carry)
+					_a |= 0x80;
+        goto aggRotate;
 				break;
 
+			case 0xd9:		// NOPW
+			case 0x4d:		// NOPW
+			case 0xcd:		// NOPW
 			case 0xd3:		// NOPW
+				// 2 cicli
 				break;
 
 			case 0xd4:		// ANID n
-				res1.b.l=GetByte(_dp);
+				res1.b.l=GetValue(_dp);
 				res2.b.l=Pipe2.b.l;
-				res3.b.l=res1.b.l & res.b.l;
-				PutByte(_dp,res3.b.l);
+				res3.b.l=res1.b.l & res2.b.l;
+				PutValue(_dp,res3.b.l);
+				_pc++;
 				goto aggFlagZ;
 				break;
 
 			case 0xd5:		// ORID n
-				res1.b.l=GetByte(_dp);
+				res1.b.l=GetValue(_dp);
 				res2.b.l=Pipe2.b.l;
-				res3.b.l=res1.b.l | res.b.l;
-				PutByte(_dp,res3.b.l);
+				res3.b.l=res1.b.l | res2.b.l;
+				PutValue(_dp,res3.b.l);
+				_pc++;
+				goto aggFlagZ;
 				break;
 
 			case 0xd6:		// TSID n
+				res1.b.l=GetValue(_dp);
+				res2.b.l=Pipe2.b.l;
+				res3.b.l=res1.b.l & res2.b.l;
+				_pc++;
+				goto aggFlagZ;
 				break;
 
 			case 0xd7:		// SZ n
 				break;
 
 			case 0xd8:		// LEAVE
-				PutByte(_sp,0);
-				break;
-
-			case 0xd9:		// NOPW
+				PutValue(_sp,0);
 				break;
 
 			case 0xda:		// EXAB
@@ -910,8 +1146,8 @@ aggSubA:
 				break;
 
 			case 0xdb:		// EXAM
-				i=GetByte(_p);
-				PutByte(_p,_a);
+				i=GetValue(_p);
+				PutValue(_p,_a);
 				_a=i;
 				break;
 
@@ -919,12 +1155,14 @@ aggSubA:
 				break;
 
 			case 0xdd:		// OUTB
+				OutValue(1,_b);		// loc. 0x5d
 				break;
 
 			case 0xde:		// 
 				break;
 
 			case 0xdf:		// OUTC
+				OutValue(2,_c);		// loc. 0x5f
 				break;
 
 
@@ -960,6 +1198,10 @@ aggSubA:
 			case 0xfd:
 			case 0xfe:
 			case 0xff:
+				i=Pipe2.b.l;
+				i |= (Pipe1 & 0x1f) << 8;
+		    _pc+=1;
+				goto call;
 				break;
 			
 			}
